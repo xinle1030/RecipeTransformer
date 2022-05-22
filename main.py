@@ -26,19 +26,37 @@ import re
 import json
 import sys
 import argparse
-from urlparse import urlparse
+# from urlparse import urlparse
+from urllib.parse import urlparse
 from collections import defaultdict, OrderedDict
 from operator import itemgetter
 import textwrap
 import copy
 import requests
 from bs4 import BeautifulSoup
-from nltk import word_tokenize, pos_tag
 import web
 from web import form
 
-DEBUG = False
+import nltk
+from nltk import word_tokenize, pos_tag
+nltk.download('wordnet')
+nltk.download('omw-1.4')
+import re
+from nltk.corpus import wordnet
+from nltk.tokenize import RegexpTokenizer
+from nltk.corpus import stopwords
+from nltk import chunk,pos_tag
 
+# https://www.projectpro.io/recipes/install-and-use-spacy-models#mcetoc_1g1fr6f4r7
+import spacy
+# spacy.load('en')
+# from spacy.lang.en import English
+# parser = English()
+nlp = spacy.load("en_core_web_sm")
+import json
+import re
+
+DEBUG = False
 
 # simple regex used to find specific attributes in strings 
 measure_regex = '(cup|spoon|fluid|ounce|pinch|gill|pint|quart|gallon|pound|drops|recipe|slices|pods|package|can|head|halves)'
@@ -190,7 +208,7 @@ class Ingredient(object):
 
 	def find_name(self, description_tagged):
 		"""
-		looks for name of the ingredient from the desciption. Finds the nouns that are not measurements
+		looks for name of the ingredient from the description. Finds the nouns that are not measurements
 		"""
 		name = [d[0] for d in description_tagged if ((d[1] == 'NN' or d[1] == 'NNS' or d[1] == 'NNP') 
 													and not re.search(measure_regex, d[0], flags=re.I)
@@ -519,170 +537,6 @@ class Recipe(object):
 		return s
 
 
-	def to_healthy(self):
-		"""
-		Transforms the recipe to a more healthy version by removing and/or replacing unhealthy ingredients
-		"""
-		for i, ingredient in enumerate(self.ingredients):
-			if any(name in ingredient.name.split(' ') for name in healthy_substitutes.keys()):
-				key = next(name for name in ingredient.name.split(' ') if name in healthy_substitutes.keys())
-				healthy_sub = Ingredient(healthy_substitutes[key])
-				healthy_sub.quantity = ingredient.quantity
-				self.swap_ingredients(self.ingredients[i], healthy_sub)
-		
-		self.name = self.name + ' (healthy)'
-
-
-	def from_healthy(self):
-		"""
-		Transforms the recipe to a less healthy (more delicous) version by adding unhealthy ingredients and/or replacing 
-		healthy ingredients with unhealthy ingredients from the global unhealthy_substitutes list
-		"""
-		for i, ingredient in enumerate(self.ingredients):
-			if ingredient.type == 'V':
-				candidates = filter(lambda sub: sub[1] == 'V', unhealthy_substitutes)
-				new_ingredient = Ingredient(random.choice(candidates)[0])
-				self.swap_ingredients(ingredient, new_ingredient)
-			if ingredient.type == 'M':
-				candidates = filter(lambda sub: sub[1] == 'M', unhealthy_substitutes)
-				new_ingredient = Ingredient(random.choice(candidates)[0])
-				self.swap_ingredients(ingredient, new_ingredient)
-
-
-		self.name = self.name + ' (unhealthy)'
-		
-
-	def to_vegan(self):
-		"""
-		Transforms the recipe to be vegan by removing and/or subsituting all ingredients that are not vegan
-		"""
-		# start by making vegetarian
-		self.to_vegetarian()
-
-		# add a random dairy from the dairy_substitutes dictionary
-		for i, ingredient in enumerate(self.ingredients):
-			if ingredient.type == 'D':
-				idx = random.randint(0, len(dairy_substitutes.keys()) - 1)
-				dairy_sub = Ingredient(dairy_substitutes[dairy_substitutes.keys()[idx]])
-				dairy_sub.quantity = ingredient.quantity
-				self.swap_ingredients(self.ingredients[i], dairy_sub)
-		
-		# update the name of the recipe
-		self.name = self.name.replace(' (vegetarian)', '') + ' (vegan)'
-
-
-	def from_vegan(self):
-		"""
-		Transforms the recipe to be non-vegan by adding ingredients that are not vegan
-		"""
-		# start by adding random meat
-		self.from_vegetarian()
-
-		# find random dairy
-		dairy = random.choice(dairy_list)
-
-		# add it to the ingredients list
-		self.ingredients.append(Ingredient('3 cups of {}'.format(dairy)))
-
-		# create and add new instructions for making and inserting the dairy
-		
-		# update the name of the recipe
-		self.name = self.name + ' (non-vegan)'
-
-
-	def to_vegetarian(self):
-		"""
-		Replaces meat or seafood ingredients with vegetarian alternatives. Uses a random integer generator to randomly choose
-		which substitute from the meat_substitutes list to use. 
-		"""
-
-		for i, ingredient in enumerate(self.ingredients):
-			if ingredient.type == 'M':
-				meat_sub = Ingredient(random.choice(meat_substitutes))
-				meat_sub.quantity = ingredient.quantity
-				self.swap_ingredients(self.ingredients[i], meat_sub)
-		
-		self.name = self.name + ' (vegetarian)'
-
-
-	def from_vegetarian(self):
-		"""
-		Adds a random meat from the gloabl meat_list to the recipe, updates instructions and times
-		accordingly
-		"""
-
-		# find a random meat from the meat_list to add
-		meat = random.choice(meat_list).encode('utf-8')
-		self.ingredients.append(Ingredient('3 cups of boiled {}'.format(meat)))
-
-
-		# update/add/build the necessary instructions
-		boiling_meat = 'Place the {0} in a non-stick pan and fill the pan with water until the {0} are covered.'.format(meat) \
-		+ ' Simmer uncovered for 5 minutes.' \
-		+ ' Then, turn off the heat and cover for 15 minutes. Remove the {0} and set aside.'.format(meat)
-		adding_meat = 'Shred the {0} by pulling the meat apart into thin slices by hand. Stir in the shredded {0}.'.format(meat)
-
-		# Instatiate objects
-		boiling_meat_instruction = Instruction(boiling_meat)
-		adding_meat_instruction = Instruction(adding_meat)
-
-
-		# add the instructions to the recipe
-		self.instructions.insert(0, boiling_meat_instruction)
-		self.instructions.insert(-1, adding_meat_instruction)
-
-
-	def to_pescatarian(self):
-		"""
-		Replaces meat with seafood ingredients. Uses a random integer generator to randomly choose
-		which substitute from the seafood_list to use. If no meat, then augment the recipe with a random 
-		seafood
-		"""
-		swapped = False
-		for i, ingredient in enumerate(self.ingredients):
-			if ingredient.type == 'M':
-				seafood_sub = Ingredient('3 cups of {}'.format(random.choice(seafood_list)))
-				seafood_sub.quantity = ingredient.quantity
-				self.swap_ingredients(self.ingredients[i], seafood_sub)
-				swapped = True
-
-		if not swapped:
-			# augment the recipe instead of swapping because no meats in the recipe
-			seafood_ing = Ingredient('3 cups of {}'.format(random.choice(seafood_list)))
-			self.ingredients.append(seafood_ing)
-
-			grill_seafood = 'Place the {} in a non-stick pan and fill the pan with oil.'.format(seafood_ing.name) \
-			+ ' Grill both sides until charred, takes about 7 minutes.' \
-			+ ' Then, turn off the heat and cover for 15 minutes.'
-			add_seafood = 'flip the {} onto the plate over the other ingredients.'.format(seafood_ing.name)
-
-			# Instatiate objects
-			grill_seafood_instruction = Instruction(grill_seafood)
-			add_seafood_instruction = Instruction(add_seafood)
-
-
-			# add the instructions to the recipe
-			self.instructions.insert(0, grill_seafood_instruction)
-			self.instructions.insert(-1, add_seafood_instruction)
-		
-		self.name = self.name + ' (pescatarian)'
-		
-
-	def from_pescatarian(self):
-		"""
-		Replaces seafood with meat and vegetable ingredients. Uses a random integer generator to randomly choose
-		which substitute from the meat_list to use. If no seafood, then augment the recipe with a random 
-		meat/dairy/grain
-		"""
-		for i, ingredient in enumerate(self.ingredients):
-			if ingredient.type == 'P':
-				meat_sub = Ingredient(random.choice(meat_substitutes))
-				meat_sub.quantity = ingredient.quantity
-				self.swap_ingredients(self.ingredients[i], meat_sub)
-		
-		self.name = self.name + ' (non-pescatarian)'
-
-
 	def to_style(self, style, threshold=1.0):
 		"""
 		search all recipes for recipes pertaining to the 'style' parameter and builds frequency dictionary.
@@ -755,7 +609,7 @@ class Recipe(object):
 
 		# Find out most common ingredients from all recipes of type 'style' -- then decide which to switch and/or add to current recipe
 		try: most_common_sauce = next(ingredient for ingredient in ingredient_changes if ingredient.type == 'S')
-		except StopIteration: most_comon_sauce = None 
+		except StopIteration: most_common_sauce = None 
 		try: most_common_meat = next(ingredient for ingredient in ingredient_changes if ingredient.type == 'M')
 		except StopIteration: most_common_meat = None
 		try: most_common_vegetable = next(ingredient for ingredient in ingredient_changes if ingredient.type == 'V')
@@ -788,245 +642,6 @@ class Recipe(object):
 
 		# update name
 		self.name = self.name + ' (' + style + ')'
-
-
-	def to_method(self, method):
-		"""
-		Transforms the recipe into using a method. The supported methods are
-
-			* fry  (i.e. fried chicken)
-			* stirfry 
-			* bake
-
-		If the method parameter is passed an unsupported value, an error message will be displayed and no
-		transformation will be made to the recipe object. 
-		"""
-		supported_methods = ['fry', 'stir-fry', 'bake']
-		if not method in supported_methods:
-			print ('Error in to_method call. {} method is not yet supported.\n \
-				please look at documentation for supported methods'.format(method))
-			return 
-
-
-		replacements = {
-			'to_fry': [('preheated', ''), ('preheat', ''),  ('oven', ''), ('degree', ''), ('baking sheet', 'skillet'), ('bake', 'fry'), ('baked', 'fried')],
-			'to_bake': [('skillet', 'baking sheet'), ('fry', 'place in oven'), ('drain', 'dry'), ('paper towel', ''), ('dry', 'remove from oven'), ('pot', 'baking sheet'), ('boil', 'crisp'), ('water', 'tin foil')],
-			'to_stir-fry': [('preheated', ''), ('preheat', ''),  ('oven', ''), ('degree', ''), ('baking sheet', 'skillet'), ('bake', 'cook'), ('baked', 'cooked'), ('fry', 'cook until crisp'), ('drain', 'pour over rice and vegetables'), ('paper towel', '')]
-		}
-
-
-		#
-		#
-		#  Fry
-		#
-		#
-
-		if method == 'fry':
-			# vegetable and meat booleans 
-			V, M = False, False
-
-			# add flour if there is no flour in the recipe already 
-			flour = [ingredient for ingredient in self.ingredients if 'flour' in ingredient.name.lower().split(' ')]
-			if not len(flour):
-				self.ingredients.append(Ingredient('1 1/2 cups of flour'))
-			
-
-			# add oil if there is no oil in the recipe already
-			oil = [ingredient for ingredient in self.ingredients if 'oil' in ingredient.name.lower().split(' ')]
-			if not len(flour):
-				self.ingredients.append(Ingredient('2 quarts of vegetable oil'))
-
-
-			# find if there are vegetables
-			vegetables = [ingredient for ingredient in self.ingredients if ingredient.type == 'V']
-
-			# find if there are meats
-			meats = [ingredient for ingredient in self.ingredients if ingredient.type == 'M']
-			
-			if not len(meats):
-				if not len(vegetables):
-					# add meat if there is no meat or vegetables in the recipe
-					meat = Ingredient('10 ounces of {}'.format(random.choice(meat_list)))
-					self.ingredients.append(meat)
-					M = True
-				else: 
-					V = True
-			else:
-				M = True
-				V = bool(len(vegetables))
-				meat = meats[0]
-
-			
-			if re.search('Preheat oven to', self.instructions[0].instruction):
-				self.instructions = self.instructions[1:]
-
-			# remove / update all instructions that correlated to previous cooking methods
-			other_method_regex = '(' + '|'.join(w[0] for w in replacements['to_fry']) + ')'
-			for i, instruction in enumerate(self.instructions):
-				inst = ' ' + instruction.instruction.lower()
-				if re.search(other_method_regex, inst, flags=re.I):
-					other_words = replacements['to_fry'] 
-					for word in other_words:
-						if inst.find(word[0]):
-							inst = inst.replace(word[0], word[1])
-							self.instructions[i] = Instruction(inst.strip())	# update instruction object in memory --> make permanent 
-
-
-
-			# add necessary instructions
-			instruction_meat = 'In a large skillet, heat oil over medium heat. Salt and pepper {0} to taste, then roll in flour to coat. \
-			Place {0} in skillet and fry on medium heat until one side is golden brown, \
-			then turn and brown other side until {0} is no longer pink inside and its juices run clear.'.format(meat.name)
-
-			# if len(vegetables):
-			# 	instruction_vegetables = 'In a large skillet, heat oil over medium heat. Salt and pepper {0} to taste, then roll in flour to coat. \
-			# 	Place {0} in skillet and fry on medium heat until crispy.'.format(' and '.join([v.name for v in vegetables]))
-
-			# 	# add vegetable instruction if vegetables are in recipe
-			# 	self.instructions.insert(-1, Instruction(instruction_vegetables.strip()))
-
-			# frying adds meat to the recipe regardless, 
-			self.instructions.insert(-1, Instruction(instruction_meat.strip()))
-
-			# update cooking tools and methods
-			self.cooking_tools = ['skillet']
-			self.cooking_methods = ['fry']
-
-			if not re.search('serve', self.instructions[-1].instruction):
-				self.instructions.append(Instruction('Remove {} from the skillet. Dry on paper towels and serve!'.format(meat.name)))
-
-
-
-		#
-		#
-		#	Stir-fry
-		#
-		#
-
-		elif method == 'stir-fry':
-
-			# make sure there are vegetables 
-			vegetables = [ingredient for ingredient in self.ingredients if ingredient.type == 'V']
-
-			if len(vegetables) < 5:
-				for _ in range(5 - len(vegetables)):
-					try: self.ingredients.append(Ingredient('{} cups of {}'.format(random.randint(1,4), random.choice(vegetable_list))))
-					except: pass
-			# update after the additions
-			vegetables = [ingredient for ingredient in self.ingredients if ingredient.type == 'V']
-
-			# add sesame oil and soy sauce to stirfry the vegetables
-			self.ingredients.append(Ingredient('1 tablespoon of sesame oil'))
-			self.ingredients.append(Ingredient('2 tablespoons of soy sauce'))
-
-			# add rice
-			self.ingredients.append(Ingredient('1 1/2 cups of uncooked rice'))
-
-			if re.search('Preheat oven to', self.instructions[0].instruction):
-				self.instructions = self.instructions[1:]
-
-			# remove / update all instructions that correlated to previous cooking methods
-			other_method_regex = '(' + '|'.join(w[0] for w in replacements['to_stir-fry']) + ')'
-			for i, instruction in enumerate(self.instructions):
-				inst = ' ' + instruction.instruction.lower()
-				if re.search(other_method_regex, inst, flags=re.I):
-					other_words = replacements['to_stir-fry'] 
-					for word in other_words:
-						if inst.find(word[0]):
-							inst = inst.replace(word[0], word[1])
-							self.instructions[i] = Instruction(inst.strip()) 	# update instruction object in memory --> make permanent 
-
-			
-			instruction_rice = 'Heat 4 quarts of water to a boil and then place the rice in and let it cook for 8 minutes'
-
-			instruction_vegetables = 'Heat 1 tablespoon sesame oil in a large skillet over medium-high heat. Cook and \
-			stir {} until just tender, about 5 minutes. \
-			Remove vegetables from skillet and keep warm.'.format(' and '.join([v.name for v in vegetables]))
-
-			# update cooking method and tools
-			self.cooking_methods = ['stir-fry']
-			self.cooking_tools = ['skillet']
-
-			# update instructions
-			self.instructions.insert(-1, Instruction(instruction_vegetables.strip()))
-			self.instructions.insert(-1, Instruction(instruction_rice.strip()))
-
-		#
-		#
-		# 	Baking
-		#
-		#
-
-		# otherwise it must be 'bake' due to process of elimination
-		else:
-
-			begin_instruction = Instruction('Preheat oven to 350 degrees F (175 degrees C). Grease a 9x13-inch baking dish.')
-			bake_instruction = Instruction('Bake in the preheated oven until the ensemble is crisp, about 30 minutes. Remove from the oven and drizzle with sauce.')
-
-			# update cooking methods and tools
-			self.cooking_methods = ['Bake']
-			current_tools = self.cooking_tools
-			self.cooking_tools = ['pan', 'oven', 'dish', 'bowl']
-
-			bake_instruction_idx = 1
-
-			for instruction in self.instructions:
-				words = instruction.instruction_words
-				for i, w in enumerate(words):
-
-					# do all stir-fry recipes use skillets?
-					if re.search('skillet', w, flags=re.I):
-						instruction.instruction_words[i] = 'pan'
-						bake_instruction_idx = i
-
-
-
-			# remove / update all instructions that correlated to previous cooking methods
-			other_method_regex = '(' + '|'.join(w[0] for w in replacements['to_bake']) + ')'
-			for i, instruction in enumerate(self.instructions):
-				inst = ' ' + instruction.instruction.lower()
-				if re.search(other_method_regex, inst, flags=re.I):
-					other_words = replacements['to_bake'] 
-					for word in other_words:
-						if inst.find(word[0]):
-							inst = inst.replace(word[0], word[1])
-							self.instructions[i] = Instruction(inst.strip()) 	# update instruction object in memory --> make permanent 
-
-
-
-			# update proper instructions
-			self.instructions.insert(0, begin_instruction)
-
-			if not re.search('serve', self.instructions[-1].instruction, flags=re.I):
-				self.instructions.insert(bake_instruction_idx, bake_instruction)
-			
-		
-		self.update_instructions()
-		self.name = self.name + ' (' + method + ')'
-
-
-	def to_easy(self):
-		"""
-		makes recipes easier by replacing freshly made ingredients with store-bought, 
-		disallowing finely done ingredients, and only allowing one type of chees
-		"""		
-		for i, ingredient in enumerate(self.ingredients):
-			if 'freshly' in ingredient.descriptor:
-				ingredient.descriptor.remove('freshly')
-				ingredient.descriptor.append('store-bought')
-			if 'finely' in ingredient.descriptor:
-				ingredient.descriptor.remove('finely')
-			self.ingredients[i] = ingredient
-
-		cheeses = [ing for ing in self.ingredients if re.search('cheese', ing.name)]
-		if len(cheeses) > 1:
-			for i in range(1, len(cheeses)):
-				first_cheese = copy.deepcopy(cheeses[0])
-				first_cheese.measurement = cheeses[i].measurement
-				first_cheese.quantity = cheeses[i].quantity
-				print cheeses[0].quantity
-				self.swap_ingredients(cheeses[i], first_cheese)
-
 
 	def freq_dist(self, data):
 		"""
@@ -1083,7 +698,7 @@ def parse_url(url):
 		calories: int
 		carbs: int
 		fat: int
-		protien: int
+		protein: int
 		cholesterol: int
 		sodium: int
 
@@ -1098,9 +713,10 @@ def parse_url(url):
 
 
 	# find name 
-	name = soup.find('h1', {'itemprop': 'name'}).text
+	try: name = soup.find('h1', {'itemprop': 'name'}).text
+	except: name = ""
 	
-	# find relavent time information
+	# find relevant time information
 	# some recipes are missing some of the times 
 	try: preptime  = remove_non_numerics(soup.find('time', {'itemprop': 'prepTime'}).text)
 	except: preptime = 0
@@ -1124,7 +740,6 @@ def parse_url(url):
 	cholesterol  = soup.find('span', {'itemprop': 'cholesterolContent'}).text	    # measured in miligrams
 	sodium  = soup.find('span', {'itemprop': 'sodiumContent'}).text			        # measured in grams
 
-		
 	if DEBUG:
 		print ('recipe is called {}'.format(name))
 		print ('prep time is {} minutes, cook time is {} minutes and total time is {} minutes'.format(preptime, cooktime, totaltime))
@@ -1228,8 +843,9 @@ def build_dynamic_lists():
 	# store in BeautifulSoup object to parse HTML DOM
 	soup = BeautifulSoup(c, "lxml")
 
-	div = soup.find('div', {'class': 'entry-content'})
-	lis = [li.text.strip() for li in div.find_all('li')]
+	# div = soup.find('div', {'class': 'entry-content'})
+	# lis = [li.text.strip() for li in div.find_all('li')]
+	lis = [li.text.strip() for li in soup.find_all('li')]
 	lis_clean = []
 	for li in lis:
 		if len(li) == 1: continue
@@ -1246,8 +862,9 @@ def build_dynamic_lists():
 	# store in BeautifulSoup object to parse HTML DOM
 	soup = BeautifulSoup(c, "lxml")
 
-	div = soup.find('div', {'class': 'entry-content'})
-	lis = [li.text.strip() for li in div.find_all('li')]
+	# div = soup.find('div', {'class': 'entry-content'})
+	# lis = [li.text.strip() for li in div.find_all('li')]
+	lis = [li.text.strip() for li in soup.find_all('li')]
 	lis_clean = []
 	for li in lis:
 		if len(li) == 1: continue
@@ -1265,8 +882,9 @@ def build_dynamic_lists():
 	# store in BeautifulSoup object to parse HTML DOM
 	soup = BeautifulSoup(c, "lxml")
 
-	div = soup.find('div', {'class': 'entry-content'})
-	lis = [li.text.strip() for li in div.find_all('li')]
+	# div = soup.find('div', {'class': 'entry-content'})
+	# lis = [li.text.strip() for li in div.find_all('li')]
+	lis = [li.text.strip() for li in soup.find_all('li')]
 	lis_clean = []
 	for li in lis:
 		if len(li) == 1: continue
@@ -1284,8 +902,9 @@ def build_dynamic_lists():
 	# store in BeautifulSoup object to parse HTML DOM
 	soup = BeautifulSoup(c, "lxml")
 
-	div = soup.find('div', {'class': 'entry-content'})
-	lis = [li.text.strip() for li in div.find_all('li')]
+	# div = soup.find('div', {'class': 'entry-content'})
+	# lis = [li.text.strip() for li in div.find_all('li')]
+	lis = [li.text.strip() for li in soup.find_all('li')]
 	lis_clean = []
 	for li in lis:
 		if len(li) == 1: continue
@@ -1303,8 +922,9 @@ def build_dynamic_lists():
 	# store in BeautifulSoup object to parse HTML DOM
 	soup = BeautifulSoup(c, "lxml")
 
-	div = soup.find('div', {'class': 'entry-content'})
-	lis = [li.text.strip() for li in div.find_all('li')]
+	# div = soup.find('div', {'class': 'entry-content'})
+	# lis = [li.text.strip() for li in div.find_all('li')]
+	lis = [li.text.strip() for li in soup.find_all('li')]
 	lis_clean = []
 	for li in lis:
 		if len(li) == 1: continue
@@ -1323,11 +943,176 @@ def timeit(method):
             name = kw.get('log_name', method.__name__.upper())
             kw['log_time'][name] = int((te - ts))
         else:
-            print '%r  %2.2f s' % \
-                  (method.__name__, (te - ts))
+            print('%r  %2.2f s' % \
+                  (method.__name__, (te - ts)))
         return result
     return timed
 
+"""
+iPynb Code
+"""
+
+# Get Synonyms for attribute fucntion 
+def get_synonyms(word: str):
+    synonyms = []
+    for syn in wordnet.synsets(word):
+        for i in syn.lemmas():
+            synonyms.append(i.name())
+    synonyms.append(word)
+    return set(synonyms) 
+
+def clean_synonyms(synonym_list, unused_synonyms):
+  for synonym in unused_synonyms:
+    if synonym in synonym_list:
+      synonym_list.remove(synonym)
+  ret_list = []
+  for synonym in synonym_list:
+    ret_list.append(synonym.lower())
+  return ret_list
+
+def build_synonyms():
+	# get synonyms for attribute 
+	cook_time_synonyms = get_synonyms('cook')
+	serving_synonyms = get_synonyms('Serving')
+	prep_time_synonyms = get_synonyms('Prep')
+	ingredient_synonyms = get_synonyms('Ingredients')
+	instruction_synonyms = get_synonyms('Method')
+	tips_synonyms = get_synonyms('tips')
+	nutrient_synonyms = get_synonyms('Nutrition')
+	cuisine_synonyms = get_synonyms('Cuisine')
+	category_synonyms = get_synonyms('Categories')
+
+	# remove some synonyms from wordnet 
+	cook_time_synonyms = clean_synonyms(cook_time_synonyms, ['James_Cook', 'Captain_Cook', 'Captain_James_Cook', 'wangle', 'ready', 'falsify', 'make', 'Cook', 'prepare', 'misrepresent', 'fake', 'manipulate', 'fix', 'fudge'])
+	serving_synonyms = clean_synonyms(serving_synonyms, ['attend_to', 'suffice', 'dish_out', 'portion', 'helping', 'function', 'wait_on', 'answer', 'swear_out', 'attend', 'do', 'help', 'process', 'serving', 'dish'])
+	serving_synonyms.append("serves")
+	prep_time_synonyms = clean_synonyms(prep_time_synonyms, ['homework'])
+	ingredient_synonyms = clean_synonyms(ingredient_synonyms, ['fixings'])
+	instruction_synonyms = clean_synonyms(instruction_synonyms, ['method_acting'])
+	tips_synonyms = clean_synonyms(tips_synonyms, ['tippytoe', 'gratuity', 'lead', 'bakshish', 'steer', 'lean', 'summit', 'crest', 'backsheesh', 'tiptoe', 'baksheesh', 'confidential_information', 'hint', 'angle', 'slant', 'topple', 'tumble', 'top', 'wind', 'bakshis', 'crown', 'fee', 'tap', 'tip_off', 'tilt', 'bung', 'pourboire'])
+	nutrient_synonyms = clean_synonyms(nutrient_synonyms, ['victuals'])
+	cuisine_synonyms = clean_synonyms(cuisine_synonyms, [])
+	category_synonyms = clean_synonyms(category_synonyms, [])
+
+	# remove cook time first
+	list_of_attribute = [serving_synonyms, prep_time_synonyms, ingredient_synonyms, instruction_synonyms,
+						tips_synonyms, nutrient_synonyms, cuisine_synonyms, category_synonyms]
+	
+	return list_of_attribute
+
+# Text Cleaning
+
+def remove_non_ascii(text):
+    string_encode = text.encode("ascii", "ignore")  
+    string_decode = string_encode.decode()
+    return string_decode
+
+
+def set_division(clean_text_lines):
+	with open('result/synonyms.json', 'r') as f:
+		syn_json_object = json.load(f)
+
+	with open('result/recipe_template.json') as f:
+		data = json.load(f)
+
+	with open('result/recipe_file.json', 'w') as f:
+		json.dump(data, f, indent=2)
+
+	with open('result/recipe_file.json', 'r') as f:
+		recipe_json_object = json.load(f)
+
+	result = []
+
+	for index, line in enumerate(clean_text_lines):
+		for key in syn_json_object:
+			# Division for Tips
+			if key == "tips":
+				if key in line.lower():
+					result.append((key, index))
+			# Division for Serving, Ingredient, Instructions, Nutrients
+			else:
+				for attribute in syn_json_object[key]:
+					if attribute in line.lower() and key in recipe_json_object and not recipe_json_object[key]:
+						result.append((key, index))
+						recipe_json_object[key] = True
+	return result
+
+# Write to recipe json file
+
+def categorize(json_obj, result, clean_text_lines):
+    # general formatting 
+    for i, item in enumerate(result):
+      key = item[0]
+      index = item[1]
+      if key == "serving":
+        serving = (re.findall(r'\d+', clean_text_lines[index]))[0]
+        json_obj[key] = serving
+        # title formatting
+        next_item = result[i + 1]
+        next_index = next_item[1]
+        json_obj["title"] = clean_text_lines[index + 1 : next_index]
+      elif key == "nutrient":
+        last_index = len(clean_text_lines) - 3  # to exclude page label
+        json_obj[key] = clean_text_lines[index + 1 : last_index]
+      else:
+        next_item = result[i + 1]
+        next_index = next_item[1]
+        json_obj[key] = clean_text_lines[index + 1 : next_index]
+    return json_obj
+
+def join_string(json_obj, key):
+  # formatting title
+  key_list = json_obj[key]
+  json_obj[key] = ' '.join(key_list)
+  return json_obj
+
+def nutrient_formatter():
+# Format nutrients element into properly formatted JSON object
+	with open('result/recipe_file.json', 'r') as f:
+		i = 0
+		result = {}
+		json_object = json.load(f)
+		nutrient = json_object["nutrient"]
+		
+		print(nutrient, '\n')
+		while i < len(nutrient):
+			searched_val = re.search(r"\d", nutrient[i])
+
+			if searched_val: # element contains key and value (split and separate into key and value)
+				index_firstnum = searched_val.start()
+				if index_firstnum != 0: # both key and value
+					key = nutrient[i][0:(index_firstnum-1)].strip() 
+					value = nutrient[i][index_firstnum:len(nutrient[i])].strip()
+					
+					# Fix when bracket is in value instead of key
+					if key[len(key)-1] == "(":
+						key = key[:len(key)]
+						right_brack_index = value.find(")")
+						key = key + value[:right_brack_index+1]
+						value = value[right_brack_index+1:len(value)].strip()
+					i += 1
+					
+			else: # only key (make into key)
+				if "Omg" in nutrient[i]: # Fixed issue where 0mg is read as Omg 
+					split = nutrient[i].split(" ", 1)
+					key = split[0]
+					value = split[1]
+					i += 1
+				else:
+					key = nutrient[i]
+					value = nutrient[i + 1]
+					i += 2
+			result[key] = value               
+		
+		# Replace value of nutrient key with correctly formatted JSON 
+		json_object["nutrient"] = result
+
+	with open('result/recipe_file.json', 'w') as f:
+		json.dump(json_object, f)
+
+"""
+iPynb Code
+"""
 
 @timeit
 def main():
@@ -1401,52 +1186,70 @@ def main():
 #============================================================================
 
 
-def main_gui(url, method, parameter):
+def main_gui(method, txtContent):
+	print(txtContent)
 
 	# parse websites to build global lists -- used for Ingredient type tagging
 	build_dynamic_lists()
 
+	list_of_attribute = build_synonyms()
 
-	URL = url
-	recipe_attrs = parse_url(URL)
+	# Write to Synonym Json file
+	with open('result/synonyms.json', 'r') as f:
+		json_object = json.load(f)
+		for i, key in enumerate(json_object):
+			json_object[key] = list(list_of_attribute[i])
 
-	recipe = Recipe(**recipe_attrs)
-	s = ""
-	s += recipe.to_JSON()
+	with open('result/synonyms.json', 'w') as f:
+		json.dump(json_object, f, indent=2)
 
-	if method == 'to_vegan':
-		recipe.to_vegan()
- 	elif method == 'from_vegan':
- 		recipe.from_vegan()
- 	elif method == 'to_vegetarian':
- 		recipe.to_vegetarian()
- 	elif method == 'from_vegetarian':
- 		recipe.from_vegetarian()
- 	elif method == 'to_pescatarian':
- 		recipe.to_pescatarian()
- 	elif method == 'from_pescatarian':
- 		recipe.from_pescatarian()
- 	elif method == 'to_healthy':
- 		recipe.to_healthy()
- 	elif method == 'from_healthy':
- 		recipe.from_healthy()
- 	elif method == 'to_style(Thai)':
- 		recipe.to_style('Thai')
- 	elif method == 'to_style(parameter)':
- 		if not parameter:
-			return "This method requires a parameter"
- 		recipe.to_style(parameter)
-	elif method == 'to_method(parameter)':
-		if not parameter:
-			return "This method requires a parameter"
-		recipe.to_method(parameter)
-
-
+	# make the line into a list  
+	clean_text_lines = []
+	for line in txtContent.splitlines():
+		clean_line = remove_non_ascii(line)
+		clean_text_lines.append(clean_line.replace("\n", "").strip())   # remove newline character and space
 	
-	s += recipe.to_JSON() 
-	s += recipe.compare_to_original()
+	result = set_division(clean_text_lines)
 
-	return s
+	with open('result/recipe_template.json') as f:
+		data = json.load(f)
+		data = categorize(data, result, clean_text_lines)
+		data = join_string(data, "title")
+		data = join_string(data, "instruction")
+		data = join_string(data, "tips")
+
+	with open('result/recipe_file.json', 'w') as f:
+		json.dump(data, f, indent=2)
+		print(data, '\n')
+		for key in data:
+			if key == "nutrient":
+				print(key, ":", data[key])
+	
+	nutrient_formatter()
+
+	# download json file here
+
+	with open('result/recipe_file.json') as f:
+		data = json.load(f)
+		print(data)
+		return data
+
+	# URL = ""
+	# recipe_attrs = parse_url(URL)
+
+	# recipe = Recipe(**recipe_attrs)
+	# s = ""
+	# s += recipe.to_JSON()
+
+	# if method == 'to_JSON':
+	# 	recipe.to_JSON()
+	# elif method == 'print_pretty':
+	# 	recipe.print_pretty()
+	
+	# s += recipe.to_JSON() 
+	# s += recipe.compare_to_original()
+
+	# return s
 
 render = web.template.render('templates/')
 
@@ -1454,31 +1257,31 @@ urls = ('/', 'index')
 class RecipeApp(web.application):
     def run(self, port=8080, *middleware):
         func = self.wsgifunc(*middleware)
-        return web.httpserver.runsimple(func, ('0.0.0.0', port))
+        return web.httpserver.runsimple(func, ('127.0.0.1', port))
 
 myform = form.Form( 
-    form.Textbox("url", 
-        form.notnull), 
-    form.Dropdown('transformation', ['to_vegan', 'from_vegan', 'to_vegetarian', 'from_vegetarian', 'to_pescatarian', 'from_pescatarian', 'to_healthy', 'from_healthy', 'to_style(parameter)', 'to_method(parameter)']),
-	form.Textbox("parameter (optional)"))
-
-
+	form.File('recipe_file'),
+    form.Dropdown('transformation', ['to_JSON', 'print_pretty']),
+	)
 
 class index: 
-    def GET(self): 
-        form = myform()
+	def GET(self): 
+		form = myform()
         # make sure you create a copy of the form by calling it (line above)
         # Otherwise changes will appear globally
-        return render.formtest(form)
-
-    def POST(self): 
-        form = myform() 
-        if not form.validates(): 
-            return render.formtest(form)
-        else:
-            return main_gui(form.d.url, form['transformation'].value, form['parameter (optional)'].value)
-
-
+		return render.formtest(form)
+	
+	def POST(self):
+		form = myform()
+		if not form.validates(): 
+			return render.formtest(form)
+		else:
+			# https://webpy.org/cookbook/fileupload
+			x = web.input(recipe_file={})
+			recipeFile = x['recipe_file']
+			# fileName = recipeFile.filename
+			txtContent = recipeFile.file.read().decode(errors='replace')
+			return main_gui(form['transformation'].value, txtContent)
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
