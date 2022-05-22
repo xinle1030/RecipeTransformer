@@ -39,6 +39,8 @@ from web import form
 
 import nltk
 from nltk import word_tokenize, pos_tag
+
+from recipe_parser import RecipeParser
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 import re
@@ -948,172 +950,6 @@ def timeit(method):
         return result
     return timed
 
-"""
-iPynb Code
-"""
-
-# Get Synonyms for attribute fucntion 
-def get_synonyms(word: str):
-    synonyms = []
-    for syn in wordnet.synsets(word):
-        for i in syn.lemmas():
-            synonyms.append(i.name())
-    synonyms.append(word)
-    return set(synonyms) 
-
-def clean_synonyms(synonym_list, unused_synonyms):
-  for synonym in unused_synonyms:
-    if synonym in synonym_list:
-      synonym_list.remove(synonym)
-  ret_list = []
-  for synonym in synonym_list:
-    ret_list.append(synonym.lower())
-  return ret_list
-
-def build_synonyms():
-	# get synonyms for attribute 
-	cook_time_synonyms = get_synonyms('cook')
-	serving_synonyms = get_synonyms('Serving')
-	prep_time_synonyms = get_synonyms('Prep')
-	ingredient_synonyms = get_synonyms('Ingredients')
-	instruction_synonyms = get_synonyms('Method')
-	tips_synonyms = get_synonyms('tips')
-	nutrient_synonyms = get_synonyms('Nutrition')
-	cuisine_synonyms = get_synonyms('Cuisine')
-	category_synonyms = get_synonyms('Categories')
-
-	# remove some synonyms from wordnet 
-	cook_time_synonyms = clean_synonyms(cook_time_synonyms, ['James_Cook', 'Captain_Cook', 'Captain_James_Cook', 'wangle', 'ready', 'falsify', 'make', 'Cook', 'prepare', 'misrepresent', 'fake', 'manipulate', 'fix', 'fudge'])
-	serving_synonyms = clean_synonyms(serving_synonyms, ['attend_to', 'suffice', 'dish_out', 'portion', 'helping', 'function', 'wait_on', 'answer', 'swear_out', 'attend', 'do', 'help', 'process', 'serving', 'dish'])
-	serving_synonyms.append("serves")
-	prep_time_synonyms = clean_synonyms(prep_time_synonyms, ['homework'])
-	ingredient_synonyms = clean_synonyms(ingredient_synonyms, ['fixings'])
-	instruction_synonyms = clean_synonyms(instruction_synonyms, ['method_acting'])
-	tips_synonyms = clean_synonyms(tips_synonyms, ['tippytoe', 'gratuity', 'lead', 'bakshish', 'steer', 'lean', 'summit', 'crest', 'backsheesh', 'tiptoe', 'baksheesh', 'confidential_information', 'hint', 'angle', 'slant', 'topple', 'tumble', 'top', 'wind', 'bakshis', 'crown', 'fee', 'tap', 'tip_off', 'tilt', 'bung', 'pourboire'])
-	nutrient_synonyms = clean_synonyms(nutrient_synonyms, ['victuals'])
-	cuisine_synonyms = clean_synonyms(cuisine_synonyms, [])
-	category_synonyms = clean_synonyms(category_synonyms, [])
-
-	# remove cook time first
-	list_of_attribute = [serving_synonyms, prep_time_synonyms, ingredient_synonyms, instruction_synonyms,
-						tips_synonyms, nutrient_synonyms, cuisine_synonyms, category_synonyms]
-	
-	return list_of_attribute
-
-# Text Cleaning
-
-def remove_non_ascii(text):
-    string_encode = text.encode("ascii", "ignore")  
-    string_decode = string_encode.decode()
-    return string_decode
-
-
-def set_division(clean_text_lines):
-	with open('result/synonyms.json', 'r') as f:
-		syn_json_object = json.load(f)
-
-	with open('result/recipe_template.json') as f:
-		data = json.load(f)
-
-	with open('result/recipe_file.json', 'w') as f:
-		json.dump(data, f, indent=2)
-
-	with open('result/recipe_file.json', 'r') as f:
-		recipe_json_object = json.load(f)
-
-	result = []
-
-	for index, line in enumerate(clean_text_lines):
-		for key in syn_json_object:
-			# Division for Tips
-			if key == "tips":
-				if key in line.lower():
-					result.append((key, index))
-			# Division for Serving, Ingredient, Instructions, Nutrients
-			else:
-				for attribute in syn_json_object[key]:
-					if attribute in line.lower() and key in recipe_json_object and not recipe_json_object[key]:
-						result.append((key, index))
-						recipe_json_object[key] = True
-	return result
-
-# Write to recipe json file
-
-def categorize(json_obj, result, clean_text_lines):
-    # general formatting 
-    for i, item in enumerate(result):
-      key = item[0]
-      index = item[1]
-      if key == "serving":
-        serving = (re.findall(r'\d+', clean_text_lines[index]))[0]
-        json_obj[key] = serving
-        # title formatting
-        next_item = result[i + 1]
-        next_index = next_item[1]
-        json_obj["title"] = clean_text_lines[index + 1 : next_index]
-      elif key == "nutrient":
-        last_index = len(clean_text_lines) - 3  # to exclude page label
-        json_obj[key] = clean_text_lines[index + 1 : last_index]
-      else:
-        next_item = result[i + 1]
-        next_index = next_item[1]
-        json_obj[key] = clean_text_lines[index + 1 : next_index]
-    return json_obj
-
-def join_string(json_obj, key):
-  # formatting title
-  key_list = json_obj[key]
-  json_obj[key] = ' '.join(key_list)
-  return json_obj
-
-def nutrient_formatter():
-# Format nutrients element into properly formatted JSON object
-	with open('result/recipe_file.json', 'r') as f:
-		i = 0
-		result = {}
-		json_object = json.load(f)
-		nutrient = json_object["nutrient"]
-		
-		print(nutrient, '\n')
-		while i < len(nutrient):
-			searched_val = re.search(r"\d", nutrient[i])
-
-			if searched_val: # element contains key and value (split and separate into key and value)
-				index_firstnum = searched_val.start()
-				if index_firstnum != 0: # both key and value
-					key = nutrient[i][0:(index_firstnum-1)].strip() 
-					value = nutrient[i][index_firstnum:len(nutrient[i])].strip()
-					
-					# Fix when bracket is in value instead of key
-					if key[len(key)-1] == "(":
-						key = key[:len(key)]
-						right_brack_index = value.find(")")
-						key = key + value[:right_brack_index+1]
-						value = value[right_brack_index+1:len(value)].strip()
-					i += 1
-					
-			else: # only key (make into key)
-				if "Omg" in nutrient[i]: # Fixed issue where 0mg is read as Omg 
-					split = nutrient[i].split(" ", 1)
-					key = split[0]
-					value = split[1]
-					i += 1
-				else:
-					key = nutrient[i]
-					value = nutrient[i + 1]
-					i += 2
-			result[key] = value               
-		
-		# Replace value of nutrient key with correctly formatted JSON 
-		json_object["nutrient"] = result
-
-	with open('result/recipe_file.json', 'w') as f:
-		json.dump(json_object, f)
-
-"""
-iPynb Code
-"""
-
 @timeit
 def main():
 	"""
@@ -1188,16 +1024,20 @@ def main():
 
 def main_gui(method, txtContent):
 	print(txtContent)
-
+	
 	# parse websites to build global lists -- used for Ingredient type tagging
 	build_dynamic_lists()
 
-	list_of_attribute = build_synonyms()
-
+	# Initialize Recipe Parser
+	recipe_parser = RecipeParser()
+	list_of_attribute = recipe_parser.build_synonyms()
+	print(list_of_attribute)
 	# Write to Synonym Json file
 	with open('result/synonyms.json', 'r') as f:
 		json_object = json.load(f)
 		for i, key in enumerate(json_object):
+			print(i)
+			print(key)
 			json_object[key] = list(list_of_attribute[i])
 
 	with open('result/synonyms.json', 'w') as f:
@@ -1206,17 +1046,17 @@ def main_gui(method, txtContent):
 	# make the line into a list  
 	clean_text_lines = []
 	for line in txtContent.splitlines():
-		clean_line = remove_non_ascii(line)
+		clean_line = recipe_parser.remove_non_ascii(line)
 		clean_text_lines.append(clean_line.replace("\n", "").strip())   # remove newline character and space
 	
-	result = set_division(clean_text_lines)
+	result = recipe_parser.set_division(clean_text_lines)
 
 	with open('result/recipe_template.json') as f:
 		data = json.load(f)
-		data = categorize(data, result, clean_text_lines)
-		data = join_string(data, "title")
-		data = join_string(data, "instruction")
-		data = join_string(data, "tips")
+		data = recipe_parser.categorize(data,result,clean_text_lines)
+		data = recipe_parser.join_string(data, "title")
+		data = recipe_parser.join_string(data, "instruction")
+		data = recipe_parser.join_string(data, "tips")
 
 	with open('result/recipe_file.json', 'w') as f:
 		json.dump(data, f, indent=2)
@@ -1225,7 +1065,7 @@ def main_gui(method, txtContent):
 			if key == "nutrient":
 				print(key, ":", data[key])
 	
-	nutrient_formatter()
+	recipe_parser.nutrient_formatter()
 
 	# download json file here
 
