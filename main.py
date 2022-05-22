@@ -141,7 +141,9 @@ grain_list = []
 fruit_list = []
 seafood_list = []
 
-
+# Initialize Recipe Parser
+recipe_parser = RecipeParser()
+ 
 class Ingredient(object):
 	"""
 	Represents an Ingredient in the recipe. Ingredients have assoiciated quantities, names, measurements, 
@@ -1023,21 +1025,17 @@ def main():
 
 
 def main_gui(method, txtContent):
-	print(txtContent)
+	#print(txtContent)
 	
 	# parse websites to build global lists -- used for Ingredient type tagging
 	build_dynamic_lists()
 
-	# Initialize Recipe Parser
-	recipe_parser = RecipeParser()
 	list_of_attribute = recipe_parser.build_synonyms()
-	print(list_of_attribute)
+            
 	# Write to Synonym Json file
 	with open('result/synonyms.json', 'r') as f:
 		json_object = json.load(f)
 		for i, key in enumerate(json_object):
-			print(i)
-			print(key)
 			json_object[key] = list(list_of_attribute[i])
 
 	with open('result/synonyms.json', 'w') as f:
@@ -1057,7 +1055,8 @@ def main_gui(method, txtContent):
 		data = recipe_parser.join_string(data, "title")
 		data = recipe_parser.join_string(data, "instruction")
 		data = recipe_parser.join_string(data, "tips")
-
+		data = recipe_parser.give_id(data)
+		
 	with open('result/recipe_file.json', 'w') as f:
 		json.dump(data, f, indent=2)
 		print(data, '\n')

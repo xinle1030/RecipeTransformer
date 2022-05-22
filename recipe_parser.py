@@ -27,6 +27,14 @@ import json
 import re
 
 class RecipeParser():  
+    
+    def __init__(self) -> None:
+        list_of_id = []
+        for i in range(1,10000):    
+            id_name = 'AllHealthHub-' + '{0:05}'.format(i)
+            list_of_id.append(id_name)
+        self.list_of_id = list_of_id
+      
 
     # Get Synonyms for attribute fucntion 
     def get_synonyms(self,word: str):
@@ -141,6 +149,11 @@ class RecipeParser():
         key_list = json_obj[key]
         json_obj[key] = ' '.join(key_list)
         return json_obj
+    
+    def give_id(self,json_obj):
+        # assign id for recipe
+        json_obj['id'] = self.list_of_id.pop(0)
+        return json_obj
 
     def nutrient_formatter(self):
     # Format nutrients element into properly formatted JSON object
@@ -185,4 +198,6 @@ class RecipeParser():
 
         with open('result/recipe_file.json', 'w') as f:
             json.dump(json_object, f)
+            
+    
 
