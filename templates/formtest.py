@@ -2,7 +2,7 @@ $def with (form)
 
 <html>
 <head>
-<title>Recipe Transformer</title>
+<title>Recipe Parser</title>
 <style>
 body {
     background-color: linen;
@@ -55,10 +55,10 @@ div {
 </style>
 </head>
 <body>
-	<h1>Recipe Transformer</h1>
-	<h3><em>Take any recipe from allrecipes.com and modify how you like!</em><h3>
+	<h1>Recipe Parser</h1>
+	<h3><em>Upload recipe files from AllHealthHubRecipes for parsing!</em><h3>
 	<div>
-    <form name="main" method="post">
+    <form name="main" method="post" enctype="multipart/form-data" action="">
         $:form.render()
         <input type="submit" class="submit" />
     </form>
