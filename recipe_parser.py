@@ -163,7 +163,7 @@ class RecipeParser():
             json_object = json.load(f)
             nutrient = json_object["nutrient"]
             
-            print(nutrient, '\n')
+            #print(nutrient, '\n')
             while i < len(nutrient):
                 searched_val = re.search(r"\d", nutrient[i])
 

@@ -1059,10 +1059,10 @@ def main_gui(method, txtContent):
 		
 	with open('result/recipe_file.json', 'w') as f:
 		json.dump(data, f, indent=2)
-		print(data, '\n')
-		for key in data:
-			if key == "nutrient":
-				print(key, ":", data[key])
+		#print(data, '\n')
+		#for key in data:
+			#if key == "nutrient":
+				#print(key, ":", data[key])
 	
 	recipe_parser.nutrient_formatter()
 
@@ -1070,7 +1070,7 @@ def main_gui(method, txtContent):
 
 	with open('result/recipe_file.json') as f:
 		data = json.load(f)
-		print(data)
+		#print(data)
 		return data
 
 	# URL = ""
