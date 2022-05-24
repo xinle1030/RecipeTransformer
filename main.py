@@ -25,6 +25,8 @@ import random
 import re
 import json
 import sys
+from pathlib import Path
+import os.path
 import argparse
 # from urlparse import urlparse
 from urllib.parse import urlparse
@@ -32,6 +34,7 @@ from collections import defaultdict, OrderedDict
 from operator import itemgetter
 import textwrap
 import copy
+from xmlrpc.client import MAXINT
 import requests
 from bs4 import BeautifulSoup
 import web
@@ -1070,7 +1073,24 @@ def main_gui(method, txtContent):
 
 	with open('result/recipe_file.json') as f:
 		data = json.load(f)
-		#print(data)
+		
+		# get downloads path
+		download_path = str(Path.home() / "Downloads")
+		download_json_location = download_path + '/recipe_file.json'
+
+		i = 1
+		if os.path.exists(download_json_location):
+			while i < MAXINT:
+				if os.path.exists(download_path + '/recipe_file_'+str(i)+'.json'):
+					i += 1
+				else:
+					download_json_location = download_path + '/recipe_file_'+str(i)+'.json'
+					break
+
+		# create json file and write json data into file
+		with open(download_json_location, 'w') as e: 
+			json.dump(data, e, indent=2)
+		
 		return data
 
 	# URL = ""
