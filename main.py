@@ -30,16 +30,12 @@ recipe_parser = RecipeParser()
 
 
 def main_gui(method, txtContent):
-	#print(txtContent)
- 
 	recipe_parser.parse_recipe()
 	
 
 	# download json file here
-
 	with open('important_files/recipe_file.json') as f:
 		data = json.load(f)
-		#print(data)
 		return data
 
 render = web.template.render('templates/')
@@ -84,5 +80,3 @@ if __name__ == "__main__":
 		web.internalerror = web.debugerror
 		app = RecipeApp(urls, globals())
 		app.run()
-	else:
-		main()
