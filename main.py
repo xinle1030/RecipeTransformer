@@ -5,6 +5,7 @@ Recipe Transformer Project
 """
 import json
 import sys
+import zipfile
 from pathlib import Path
 import os.path
 import argparse
@@ -31,14 +32,16 @@ recipe_parser = RecipeParser()
 #============================================================================
 
 
-def main_gui(method, txtContent):
-	recipe_parser.parse_recipe()
-	
+def main_gui(method, txtfilenames):
+	recipe_parser.parse_recipe(txtfilenames)
 
 	# download json file here
-	with open('important_files/recipe_file.json') as f:
-		data = json.load(f)
-		return data
+	outputs = []
+	for i in range(len(txtfilenames)):
+		with open(f'recipe_file_{i+1}.json') as f:
+			outputs.append(json.load(f))
+
+	return outputs
 
 render = web.template.render('templates/')
 
@@ -68,9 +71,14 @@ class index:
 			# https://webpy.org/cookbook/fileupload
 			x = web.input(recipe_file={})
 			recipeFile = x['recipe_file']
-			# fileName = recipeFile.filename
-			txtContent = recipeFile.file.read().decode(errors='replace')
-			return main_gui(form['transformation'].value, txtContent)
+			filenames = []
+
+			with zipfile.ZipFile(recipeFile.filename, mode="r") as archive:
+				for f in archive.namelist():
+					filenames.append(f)
+
+			return main_gui(form['transformation'].value, filenames)
+
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()

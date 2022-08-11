@@ -11,8 +11,11 @@ parser = English()
 nlp = spacy.load("en_core_web_sm")
 import json
 import re
+import zipfile
+
 
 nlp = spacy.load("en_core_web_sm")
+
 
 class RecipeParser():  
     
@@ -134,8 +137,8 @@ class RecipeParser():
         json_obj['id'] = self.list_of_id.pop(0)
         return json_obj
 
-    def nutrient_formatter(self):
-        with open('important_files/recipe_file.json', 'r') as f:
+    def nutrient_formatter(self, filenum):
+        with open(f'recipe_file_{filenum}.json', 'r') as f:
             i = 0
             result = {}
             json_object = json.load(f)
@@ -179,10 +182,10 @@ class RecipeParser():
             json_object["nutrient"] = result
 
         # Save updated json to recipe_file.json
-        with open('important_files/recipe_file.json', 'w') as f:
+        with open(f'recipe_file_{filenum}.json', 'w') as f:
             json.dump(json_object, f, indent=2)
             
-    def parse_recipe(self):
+    def parse_recipe(self, txtfilenames):
         # Get synonyms for attribute 
         cook_time_synonyms = self.get_synonyms('cook')
         serving_synonyms = self.get_synonyms('Serving')
@@ -212,71 +215,76 @@ class RecipeParser():
         
         # Write value stored in list_of_attribute to synonyms.json file
 
-        with open('important_files/synonyms.json', 'r') as f:
+        with open('synonyms.json', 'r') as f:
             json_object = json.load(f)
             for i, key in enumerate(json_object):
                 json_object[key] = list(list_of_attribute[i])
 
         with open('synonyms.json', 'w') as f:
             json.dump(json_object, f, indent=2)
-        
-        # open text file in read mode
-        text_file = open('important_files/input_text.txt', 'rb')
-        text = text_file.read().decode(errors='replace')
 
-        # close files
-        text_file.close()
-        
-        # Make the lines into a list  
-        flag = True
-        for line in text.splitlines():
-            self.clean_text_lines.append(line.replace("\n", "").strip())   # remove newline character and space
-            
-        # Read synonyms and recipe template 
-        with open('important_files/synonyms.json', 'r') as f:
-            syn_json_object = json.load(f)
+        outputs_zip = zipfile.ZipFile("outputs.zip", "w")
+        for i in range(len(txtfilenames)):
+            txtfilename = txtfilenames[i]
 
-        with open('important_files/recipe_template.json') as f:
-            data = json.load(f)
+            # open text file in read mode
+            text_file = open(txtfilename, 'rb')
+            text = text_file.read().decode(errors='replace')
 
-        # Append the recipe template to recipe_file.json (output json file)
-        with open('important_files/recipe_file.json', 'w') as f:
-            json.dump(data, f, indent=2)
+            # close files
+            text_file.close()
 
-        # Read the updated recipe_file.json file
-        with open('important_files/recipe_file.json', 'r') as f:
-            recipe_json_object = json.load(f)
+            # Make the lines into a list
+            flag = True
+            for line in text.splitlines():
+                self.clean_text_lines.append(line.replace("\n", "").strip())   # remove newline character and space
 
-        # Carry out division
-        result = []
+            # Read synonyms and recipe template
+            with open('synonyms.json', 'r') as f:
+                syn_json_object = json.load(f)
 
-        for index, line in enumerate(self.clean_text_lines):
-            for key in syn_json_object:
-                # Division for Tips
-                if key == "tips" and key in line.lower():
-                    result.append((key, index))
-                # Division for Serving, Ingredient, Instructions, Nutrients
-                else:
-                    for attribute in syn_json_object[key]:
-                        if (attribute in line.lower()) and (key in recipe_json_object) and (not recipe_json_object[key]):
-                            result.append((key, index))
-                            recipe_json_object[key] = True
-                            
-        # Append categorized strings to their respective category keys 
-        # using the template in recipe_template.json
-        with open('important_files/recipe_template.json') as f:
-            data = json.load(f)
-            data = self.categorize(data, result)
-            data = self.join_string(data, "title")
-            data = self.join_string(data, "ingredient")
-            data = self.join_string(data, "instruction")
-            data = self.join_string(data, "tips")
-            data = self.give_id(data)
+            with open('recipe_template.json') as f:
+                data = json.load(f)
 
-        # Save updated json to recipe_file.json
-        with open('important_files/recipe_file.json', 'w') as f:
-            json.dump(data, f, indent=2)
-        
-        self.nutrient_formatter()        
-        
+            # Append the recipe template to recipe_file.json (output json file)
+            with open(f'recipe_file_{i+1}.json', 'w') as f:
+                json.dump(data, f, indent=2)
 
+            # Read the updated recipe_file.json file
+            with open(f'recipe_file_{i+1}.json', 'r') as f:
+                recipe_json_object = json.load(f)
+
+            # Carry out division
+            result = []
+
+            for index, line in enumerate(self.clean_text_lines):
+                for key in syn_json_object:
+                    # Division for Tips
+                    if key == "tips" and key in line.lower():
+                        result.append((key, index))
+                    # Division for Serving, Ingredient, Instructions, Nutrients
+                    else:
+                        for attribute in syn_json_object[key]:
+                            if (attribute in line.lower()) and (key in recipe_json_object) and (not recipe_json_object[key]):
+                                result.append((key, index))
+                                recipe_json_object[key] = True
+
+            # Append categorized strings to their respective category keys
+            # using the template in recipe_template.json
+            with open('recipe_template.json') as f:
+                data = json.load(f)
+                data = self.categorize(data, result)
+                data = self.join_string(data, "title")
+                data = self.join_string(data, "ingredient")
+                data = self.join_string(data, "instruction")
+                data = self.join_string(data, "tips")
+                data = self.give_id(data)
+
+            # Save updated json to recipe_file.json
+            with open(f'recipe_file_{i+1}.json', 'w') as f:
+                json.dump(data, f, indent=2)
+
+            self.nutrient_formatter(i+1)
+            outputs_zip.write(f'recipe_file_{i+1}.json')
+
+        outputs_zip.close()
